@@ -1,28 +1,62 @@
 // pages/api/chat.js
-import path from "path";
-import fs from "fs";
-import Papa from "papaparse";
-import { parseQueryWithLLM } from "../../utils/queryParser"; // Make sure this exists
-import { formatProjects } from "../../utils/formatProjects";
 
+import fs from "fs";
+import path from "path";
+import Papa from "papaparse";
+import OpenAI from "openai";
+
+// Make sure your OPENAI_API_KEY is set in Render environment variables
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+// List of CSV files in public/
 const csvFiles = [
   "Project.csv",
-  "ProjectAddress.csv",
   "ProjectConfiguration.csv",
-  "ProjectConfigurationVariant.csv"
+  "ProjectConfigurationVariant.csv",
+  "ProjectAmenities.csv",
 ];
 
-// Optional: city/locality mappings
-const cityMap = {
-  "cmf6nu3ru000gvcxspxarll3v": "Mumbai",
-  "cmf6nu3ru000gvcxspxarll4v": "Pune"
-};
+// Function to parse user query using OpenAI
+async function parseQueryWithLLM(query) {
+  const prompt = `
+You are a real estate assistant.
+Extract filters from the user query:
+- City
+- BHK
+- Budget
+- Readiness (Ready / Under Construction)
+- Locality
+- Project Name (optional)
+Return JSON only, e.g.
+{
+  "city": "Pune",
+  "bhk": "2BHK",
+  "budget": 1.5,
+  "readiness": "Ready",
+  "locality": "Wakad",
+  "projectName": ""
+}
+Query: "${query}"
+`;
 
-const localityMap = {
-  "cmf6pksk30035vcxs7r2mo3iq": "Chembur",
-  "cmf6pksk30035vcxs7r2mo3ir": "Wakad"
-};
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }],
+  });
 
+  const text = response.choices[0].message.content;
+
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    console.error("Failed to parse LLM response:", text);
+    return {};
+  }
+}
+
+// API handler
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ message: "Method not allowed" });
@@ -32,7 +66,7 @@ export default async function handler(req, res) {
     const { query } = req.body;
     if (!query) return res.status(400).json({ message: "Query is required" });
 
-    // Parse user query using LLM
+    // Parse user query
     const filters = await parseQueryWithLLM(query);
 
     // Load CSVs
@@ -41,48 +75,49 @@ export default async function handler(req, res) {
       const filePath = path.join(process.cwd(), "public", fileName);
       const fileContent = fs.readFileSync(filePath, "utf8");
       const results = Papa.parse(fileContent, { header: true }).data;
-
-      // Debug log first row
-      console.log(`Sample row from ${fileName}:`, results[0]);
-
       allData = allData.concat(results);
     }
 
-    // Apply filters
-    const filteredProjects = allData.filter(project => {
-      let match = true;
+    // Filter data based on extracted filters
+    let filtered = allData;
 
-      if (filters.city) {
-        const cityName = cityMap[project.cityId]?.toLowerCase();
-        match = match && cityName && cityName.includes(filters.city.toLowerCase());
-      }
+    if (filters.city) {
+      filtered = filtered.filter(
+        (row) => row.city?.toLowerCase() === filters.city.toLowerCase()
+      );
+    }
+    if (filters.bhk) {
+      filtered = filtered.filter((row) => row.bhk?.includes(filters.bhk));
+    }
+    if (filters.budget) {
+      filtered = filtered.filter((row) => parseFloat(row.price) <= filters.budget);
+    }
+    if (filters.readiness) {
+      filtered = filtered.filter(
+        (row) => row.status?.toLowerCase() === filters.readiness.toLowerCase()
+      );
+    }
+    if (filters.locality) {
+      filtered = filtered.filter(
+        (row) => row.locality?.toLowerCase().includes(filters.locality.toLowerCase())
+      );
+    }
+    if (filters.projectName) {
+      filtered = filtered.filter(
+        (row) => row.projectName?.toLowerCase().includes(filters.projectName.toLowerCase())
+      );
+    }
 
-      if (filters.bhk) {
-        match = match && project.bhk && project.bhk.includes(filters.bhk);
-      }
+    // Generate summary
+    let summary = "";
+    if (filtered.length > 0) {
+      const sample = filtered[0];
+      summary = `Found ${filtered.length} listings. Example: ${sample.bhk} in ${sample.locality}, ${sample.city} for ₹${sample.price} Cr, ${sample.status}.`;
+    } else {
+      summary = "No matching properties found. Try expanding your search criteria.";
+    }
 
-      if (filters.budget) {
-        const price = parseFloat(project.price);
-        match = match && !isNaN(price) && price <= filters.budget;
-      }
-
-      if (filters.locality) {
-        const localityName = localityMap[project.localityId]?.toLowerCase();
-        match = match && localityName && localityName.includes(filters.locality.toLowerCase());
-      }
-
-      if (filters.projectName) {
-        match = match && project.projectName && project.projectName.toLowerCase().includes(filters.projectName.toLowerCase());
-      }
-
-      return match;
-    });
-
-    // Format summary and cards
-    const { summary, cards } = formatProjects(filteredProjects, cityMap, localityMap);
-
-    res.status(200).json({ summary, cards });
-
+    res.status(200).json({ summary, results: filtered });
   } catch (err) {
     console.error("Error in chat API:", err);
     res.status(500).json({ message: "Internal server error" });
