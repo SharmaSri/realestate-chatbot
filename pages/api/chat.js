@@ -1,30 +1,29 @@
 import fs from "fs";
 import path from "path";
 import Papa from "papaparse";
+import { parseQueryWithLLM } from "../../utils/queryParser.js";
 
-export default async function handler(req, res) {
-  if (req.method !== "POST")
-    return res.status(405).json({ message: "Only POST allowed" });
+const csvFiles = [
+  "Project.csv",
+  "ProjectAddress.csv",
+  "ProjectConfiguration.csv",
+  "ProjectConfigurationVariant.csv"
+];
 
+const csvData = {};
+
+for (const file of csvFiles) {
+  const filePath = path.join(process.cwd(), "public", file);
   try {
-    const { query } = req.body;
-    if (!query) return res.status(400).json({ message: "Query required" });
+    const fileContent = fs.readFileSync(filePath, "utf8");
+    const results = Papa.parse(fileContent, { header: true }).data;
+    csvData[file.replace(".csv", "")] = results;
+    console.log(`✅ Loaded ${file}, sample:`, results[0]);
+  } catch (err) {
+    console.error(`❌ Error reading ${file}:`, err.message);
+  }
+}
 
-    const basePath = path.join(process.cwd(), "public");
-
-    // Load CSVs
-    const projectCSV = fs.readFileSync(path.join(basePath, "Project.csv"), "utf8");
-    const addressCSV = fs.readFileSync(path.join(basePath, "ProjectAddress.csv"), "utf8");
-    const configCSV = fs.readFileSync(path.join(basePath, "ProjectConfiguration.csv"), "utf8");
-    const variantCSV = fs.readFileSync(path.join(basePath, "ProjectConfigurationVariant.csv"), "utf8");
-
-    // Parse
-    const projects = Papa.parse(projectCSV, { header: true }).data;
-    const addresses = Papa.parse(addressCSV, { header: true }).data;
-    const configs = Papa.parse(configCSV, { header: true }).data;
-    const variants = Papa.parse(variantCSV, { header: true }).data;
-
-    console.log("Sample row:", projects[0]);
 
     // Extract filters
     const q = query.toLowerCase();
