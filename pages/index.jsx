@@ -1,18 +1,17 @@
+// pages/index.jsx
 import { useState } from "react";
 
 export default function Home() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [summary, setSummary] = useState("");
   const [results, setResults] = useState([]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
+  const handleSearch = async () => {
+    if (!query) return;
+    setLoading(true);
     setSummary("");
     setResults([]);
-    setLoading(true);
 
     try {
       const res = await fetch("/api/chat", {
@@ -20,101 +19,63 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query }),
       });
-
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Something went wrong");
-      setSummary(data.summary);
-      setResults(data.results);
+      setSummary(data.summary || "");
+      setResults(data.results || []);
     } catch (err) {
       console.error(err);
-      setError("Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
+      setSummary("Something went wrong. Please try again.");
     }
+    setLoading(false);
   };
 
   return (
-    <main className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-semibold text-center text-gray-800 mb-6">
-          Real Estate ChatBot
-        </h1>
+    <div className="min-h-screen p-6 bg-gray-100">
+      <h1 className="text-3xl font-bold mb-4">Real Estate ChatBot</h1>
 
-        <form
-          onSubmit={handleSubmit}
-          className="flex flex-col sm:flex-row gap-3 justify-center mb-8"
+      <div className="flex mb-4">
+        <input
+          type="text"
+          placeholder="Ask about properties..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="flex-1 p-2 border border-gray-300 rounded-l"
+        />
+        <button
+          onClick={handleSearch}
+          disabled={loading}
+          className="p-2 bg-blue-600 text-white rounded-r hover:bg-blue-700"
         >
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ask about properties..."
-            className="flex-grow border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring focus:ring-blue-300"
-            required
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
-          >
-            {loading ? "Searching..." : "Search"}
-          </button>
-        </form>
-
-        {error && (
-          <p className="text-center text-red-500 font-medium">{error}</p>
-        )}
-
-        {summary && (
-          <p className="text-center text-gray-700 font-medium mb-4">
-            {summary}
-          </p>
-        )}
-
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {results.map((item, i) => (
-            <div
-              key={i}
-              className="bg-white rounded-xl shadow-md hover:shadow-lg transition p-5"
-            >
-              <h2 className="text-xl font-semibold text-blue-700 mb-2">
-                {item.projectName || "Unnamed Project"}
-              </h2>
-              <p className="text-gray-600 mb-1">
-                <strong>City:</strong> {item.cityId || "N/A"}
-              </p>
-              <p className="text-gray-600 mb-1">
-                <strong>BHK:</strong> {item.customBHK || item.type || "N/A"}
-              </p>
-              <p className="text-gray-600 mb-1">
-                <strong>Price:</strong>{" "}
-                {item.price ? `₹${Number(item.price).toLocaleString()}` : "N/A"}
-              </p>
-              <p className="text-gray-600 mb-1">
-                <strong>Possession:</strong>{" "}
-                {item.possessionDate
-                  ? new Date(item.possessionDate).toLocaleDateString()
-                  : "N/A"}
-              </p>
-              <p className="text-gray-600 mb-2">
-                <strong>Status:</strong>{" "}
-                {item.status ? item.status.replace("_", " ") : "N/A"}
-              </p>
-
-              {item.amenities && item.amenities.length > 0 && (
-                <div className="mt-3">
-                  <p className="font-medium text-gray-700">Amenities:</p>
-                  <ul className="list-disc ml-5 text-gray-600 text-sm">
-                    {item.amenities.map((am, idx) => (
-                      <li key={idx}>{am}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+          {loading ? "Searching..." : "Search"}
+        </button>
       </div>
-    </main>
+
+      {summary && <p className="mb-4 font-medium">{summary}</p>}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {results.map((project) => (
+          <div key={project.slug} className="bg-white p-4 rounded shadow">
+            <h2 className="text-xl font-semibold mb-1">{project.title}</h2>
+            <p className="text-gray-600 mb-1">
+              {project.city} {project.locality && `• ${project.locality}`}
+            </p>
+            <p className="text-gray-600 mb-1">BHK: {project.bhk}</p>
+            <p className="text-gray-600 mb-1">Price: {project.price}</p>
+            <p className="text-gray-600 mb-1">Possession: {project.possession}</p>
+            {project.amenities && project.amenities.length > 0 && (
+              <p className="text-gray-600 mb-1">
+                Amenities: {project.amenities.join(", ")}
+              </p>
+            )}
+            <a
+              href={`/project/${project.slug}`}
+              className="inline-block mt-2 text-blue-600 hover:underline"
+            >
+              View Project
+            </a>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

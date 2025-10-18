@@ -1,80 +1,79 @@
+// pages/api/chat.js
 import fs from "fs";
 import path from "path";
 import Papa from "papaparse";
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ message: "Method not allowed" });
-  }
-
   try {
-    const csvFiles = [
-      "Project.csv",
-      "ProjectAddress.csv",
-      "ProjectConfiguration.csv",
-      "ProjectConfigurationVariant.csv",
-    ];
-
-    const csvData = {};
-
-    for (const file of csvFiles) {
-      const filePath = path.join(process.cwd(), "public", file);
-
-      try {
-        const fileContent = fs.readFileSync(filePath, "utf8");
-        const results = Papa.parse(fileContent, { header: true }).data;
-        csvData[file.replace(".csv", "")] = results;
-        console.log(`✅ Loaded ${file}`);
-      } catch (err) {
-        console.error(`⚠️ Could not read ${file}:`, err.message);
+    // --- Helper function to load CSV safely ---
+    const loadCSV = (filename) => {
+      const filePath = path.join(process.cwd(), "public", filename);
+      if (!fs.existsSync(filePath)) {
+        console.warn(`⚠️ Could not read ${filename}: File does not exist at ${filePath}`);
+        return [];
       }
-    }
+      const csvData = fs.readFileSync(filePath, "utf8");
+      return Papa.parse(csvData, { header: true, skipEmptyLines: true }).data;
+    };
 
-    const { query } = req.body;
+    // --- Load all CSVs ---
+    const projects = loadCSV("Project.csv");
+    const addresses = loadCSV("ProjectAddress.csv");
+    const configurations = loadCSV("ProjectConfiguration.csv");
+    const variants = loadCSV("ProjectConfigurationVariant.csv");
+
+    console.log(`✅ Loaded ${projects.length} projects`);
+    console.log(`✅ Loaded ${addresses.length} addresses`);
+    console.log(`✅ Loaded ${configurations.length} configurations`);
+    console.log(`✅ Loaded ${variants.length} variants`);
+
+    // --- Parse user query (dummy for now) ---
+    const { query } = req.body || {};
     if (!query) {
-      return res.status(400).json({ message: "Query missing in request" });
+      return res.status(400).json({ message: "Query is required." });
     }
 
-    // Basic keyword filter example:
-    const keyword = query.toLowerCase();
-    const projects = csvData.Project || [];
-    const addresses = csvData.ProjectAddress || [];
-    const configurations = csvData.ProjectConfiguration || [];
-    const variants = csvData.ProjectConfigurationVariant || [];
-
-    // Simple search logic
-    const matchedProjects = projects.filter(
+    // Example filter: 2BHK ready homes in Pune under 1.5 Cr
+    const filteredProjects = projects.filter(
       (p) =>
-        p.projectName?.toLowerCase().includes(keyword) ||
-        p.projectType?.toLowerCase().includes(keyword)
+        p.cityId === "cmf6nu3ru000gvcxspxarll3v" && // Pune ID
+        p.status === "READY" &&
+        configurations.some(
+          (c) =>
+            c.projectId === p.id &&
+            c.customBHK === "2BHK" &&
+            variants.some((v) => v.configurationId === c.id && Number(v.price) <= 1.5)
+        )
     );
 
-    if (matchedProjects.length === 0) {
-      return res.status(200).json({
-        results: [],
-        message: "No properties found matching your criteria.",
-      });
+    if (filteredProjects.length === 0) {
+      return res.json({ summary: "No properties found matching your criteria.", results: [] });
     }
 
-    const finalResults = matchedProjects.map((proj) => {
-      const address = addresses.find((a) => a.projectId === proj.id);
-      const config = configurations.find((c) => c.projectId === proj.id);
+    // Map projects to frontend cards
+    const results = filteredProjects.map((p) => {
+      const addr = addresses.find((a) => a.projectId === p.id);
+      const config = configurations.find((c) => c.projectId === p.id);
       const variant = variants.find((v) => v.configurationId === config?.id);
 
       return {
-        title: proj.projectName,
-        type: proj.projectType,
-        price: variant?.price || "N/A",
-        bhk: config?.customBHK || "N/A",
-        city: proj.cityId,
-        possession: proj.possessionDate || "N/A",
-        address: address?.fullAddress || "N/A",
+        title: p.projectName,
+        city: p.cityId, // replace with proper city name mapping
+        locality: addr?.fullAddress || "",
+        bhk: config?.customBHK || "",
+        price: variant?.price ? `₹${variant.price} Cr` : "",
+        possession: p.status,
+        amenities: ["Lift", "Parking"], // Example, replace with real if in CSV
+        slug: p.slug,
       };
     });
 
-    return res.status(200).json({ results: finalResults });
+    // Example summary
+    const summary = `Found ${results.length} matching properties.`;
+
+    return res.status(200).json({ summary, results });
   } catch (err) {
-    console.error("❌ Server error:", err);
+    console.error(err);
     return res.status(500).json({ message: "Internal server error." });
   }
 }
