@@ -1,79 +1,88 @@
+// components/ChatBot.js
 import { useState } from "react";
 import axios from "axios";
 
 export default function ChatBot() {
+  const [query, setQuery] = useState("");
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
+  const handleQuery = async (e) => {
+    e.preventDefault();
+    if (!query.trim()) return;
 
-    const userMessage = { type: "user", text: input };
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
+    // Add user message
+    setMessages((prev) => [...prev, { type: "user", text: query }]);
+    setLoading(true);
+    setError("");
 
     try {
-      const res = await axios.post("/api/chat", { query: input });
-      const botMessage = {
-        type: "bot",
-        text:
-          res.data.results.length === 0
-            ? "No matching properties found."
-            : res.data.results
-                .map(
-                  (r) =>
-                    `${r.name} (${r.bhk}) in ${r.city} - ₹${r.price.toLocaleString()} - Possession: ${r.possessionDate}`
-                )
-                .join("\n"),
-      };
-      setMessages((prev) => [...prev, botMessage]);
-    } catch (err) {
+      const response = await axios.post("/api/chat", { query });
+      const { summary, cards } = response.data;
+
+      // Add bot response
       setMessages((prev) => [
         ...prev,
-        { type: "bot", text: "Error fetching results. Try again later." },
+        { type: "bot", text: summary, cards },
       ]);
+    } catch (err) {
+      console.error(err);
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+      setQuery("");
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === "Enter") sendMessage();
-  };
-
   return (
-    <div style={{ width: "400px", margin: "auto" }}>
-      <div
-        style={{
-          border: "1px solid #ccc",
-          padding: "10px",
-          height: "400px",
-          overflowY: "scroll",
-          marginBottom: "10px",
-        }}
-      >
-        {messages.map((m, i) => (
-          <div key={i} style={{ textAlign: m.type === "user" ? "right" : "left", margin: "5px 0" }}>
-            <span
-              style={{
-                display: "inline-block",
-                padding: "8px 12px",
-                borderRadius: "12px",
-                backgroundColor: m.type === "user" ? "#0070f3" : "#eee",
-                color: m.type === "user" ? "#fff" : "#000",
-              }}
-            >
-              {m.text}
-            </span>
+    <div style={{ maxWidth: "700px", margin: "2rem auto", fontFamily: "Arial" }}>
+      <h2>Real Estate ChatBot</h2>
+
+      <form onSubmit={handleQuery} style={{ marginBottom: "1rem" }}>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Ask about properties..."
+          style={{ width: "80%", padding: "0.5rem", fontSize: "1rem" }}
+        />
+        <button type="submit" style={{ padding: "0.5rem 1rem", marginLeft: "0.5rem" }}>
+          Search
+        </button>
+      </form>
+
+      {loading && <p>Loading...</p>}
+      {error && <p style={{ color: "red" }}>{error}</p>}
+
+      <div>
+        {messages.map((msg, idx) => (
+          <div key={idx} style={{ marginBottom: "1rem" }}>
+            {msg.type === "user" ? (
+              <div style={{ textAlign: "right" }}>
+                <strong>You:</strong> {msg.text}
+              </div>
+            ) : (
+              <div style={{ textAlign: "left", background: "#f1f1f1", padding: "0.5rem", borderRadius: "5px" }}>
+                <strong>Bot:</strong> {msg.text}
+                {msg.cards && msg.cards.length > 0 && (
+                  <div style={{ marginTop: "0.5rem" }}>
+                    {msg.cards.map((card, i) => (
+                      <div key={i} style={{ border: "1px solid #ddd", padding: "0.5rem", marginBottom: "0.5rem", borderRadius: "5px" }}>
+                        <strong>{card.title}</strong>
+                        <div>{card.city}, {card.locality}</div>
+                        <div>{card.bhk} | {card.price} | {card.possessionStatus}</div>
+                        {card.amenities && <div>Amenities: {card.amenities.join(", ")}</div>}
+                        <a href={`/project/${card.slug}`} style={{ color: "blue" }}>View Project</a>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>
-      <input
-        type="text"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={handleKeyPress}
-        placeholder="Ask about properties..."
-        style={{ width: "calc(100% - 22px)", padding: "10px" }}
-      />
     </div>
   );
 }

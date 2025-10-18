@@ -1,75 +1,90 @@
-import fs from "fs";
+// pages/api/chat.js
 import path from "path";
+import fs from "fs";
 import Papa from "papaparse";
+import { parseQueryWithLLM } from "../../utils/queryParser"; // Make sure this exists
+import { formatProjects } from "../../utils/formatProjects";
 
-const parseCSV = (filePath) =>
-  new Promise((resolve, reject) => {
-    const csvFile = fs.readFileSync(filePath, "utf8");
-    Papa.parse(csvFile, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => resolve(results.data),
-      error: (err) => reject(err),
-    });
-  });
+const csvFiles = [
+  "Project.csv",
+  "ProjectAddress.csv",
+  "ProjectConfiguration.csv",
+  "ProjectConfigurationVariant.csv"
+];
 
-const extractNumber = (text) => {
-  if (!text) return 0;
-  const match = text.replace(/,/g, "").match(/\d+/);
-  return match ? parseInt(match[0]) : 0;
+// Optional: city/locality mappings
+const cityMap = {
+  "cmf6nu3ru000gvcxspxarll3v": "Mumbai",
+  "cmf6nu3ru000gvcxspxarll4v": "Pune"
 };
 
-const extractBHK = (text) => {
-  const match = text.match(/(\d)\s*BHK/i);
-  return match ? parseInt(match[1]) : null;
+const localityMap = {
+  "cmf6pksk30035vcxs7r2mo3iq": "Chembur",
+  "cmf6pksk30035vcxs7r2mo3ir": "Wakad"
 };
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "POST") {
+    return res.status(405).json({ message: "Method not allowed" });
+  }
 
-  const { query } = req.body;
-  if (!query) return res.status(400).json({ error: "Query required" });
+  try {
+    const { query } = req.body;
+    if (!query) return res.status(400).json({ message: "Query is required" });
 
-  // Load CSV files
-  const projectData = await parseCSV(path.join(process.cwd(), "public", "project.csv"));
-  const addressData = await parseCSV(path.join(process.cwd(), "public", "ProjectAddress.csv"));
-  const configData = await parseCSV(path.join(process.cwd(), "public", "ProjectConfiguration.csv"));
-  const variantData = await parseCSV(path.join(process.cwd(), "public", "ProjectConfigurationVariant.csv"));
+    // Parse user query using LLM
+    const filters = await parseQueryWithLLM(query);
 
-  // Extract filters from query
-  const budget = extractNumber(query); // ₹1.2 Cr -> 12000000
-  const bhk = extractBHK(query);       // 3BHK -> 3
-  const cityMatch = query.match(/Pune|Mumbai|Bangalore|Delhi/i);
-  const city = cityMatch ? cityMatch[0] : null;
+    // Load CSVs
+    let allData = [];
+    for (const fileName of csvFiles) {
+      const filePath = path.join(process.cwd(), "public", fileName);
+      const fileContent = fs.readFileSync(filePath, "utf8");
+      const results = Papa.parse(fileContent, { header: true }).data;
 
-  // Merge data
-  const results = projectData.map((project) => {
-    const address = addressData.find((a) => a.projectId === project.id);
-    const configs = configData.filter((c) => c.projectId === project.id);
-    const variants = variantData.filter((v) =>
-      configs.some((c) => c.id === v.configurationId)
-    );
+      // Debug log first row
+      console.log(`Sample row from ${fileName}:`, results[0]);
 
-    const minPrice = Math.min(...variants.map((v) => parseFloat(v.price || Infinity)));
+      allData = allData.concat(results);
+    }
 
-    return {
-      id: project.id,
-      name: project.projectName,
-      status: project.status,
-      city: address?.fullAddress || "",
-      bhk: configs.map((c) => c.type).join(", "),
-      price: minPrice,
-      possessionDate: project.possessionDate || "",
-      variants,
-    };
-  });
+    // Apply filters
+    const filteredProjects = allData.filter(project => {
+      let match = true;
 
-  // Filter based on query
-  let filtered = results;
-  if (city) filtered = filtered.filter((r) => r.city.toLowerCase().includes(city.toLowerCase()));
-  if (bhk) filtered = filtered.filter((r) => r.bhk.includes(`${bhk}BHK`));
-  if (budget) filtered = filtered.filter((r) => r.price <= budget);
+      if (filters.city) {
+        const cityName = cityMap[project.cityId]?.toLowerCase();
+        match = match && cityName && cityName.includes(filters.city.toLowerCase());
+      }
 
-  // Return top 5 results
-  res.status(200).json({ results: filtered.slice(0, 5) });
+      if (filters.bhk) {
+        match = match && project.bhk && project.bhk.includes(filters.bhk);
+      }
+
+      if (filters.budget) {
+        const price = parseFloat(project.price);
+        match = match && !isNaN(price) && price <= filters.budget;
+      }
+
+      if (filters.locality) {
+        const localityName = localityMap[project.localityId]?.toLowerCase();
+        match = match && localityName && localityName.includes(filters.locality.toLowerCase());
+      }
+
+      if (filters.projectName) {
+        match = match && project.projectName && project.projectName.toLowerCase().includes(filters.projectName.toLowerCase());
+      }
+
+      return match;
+    });
+
+    // Format summary and cards
+    const { summary, cards } = formatProjects(filteredProjects, cityMap, localityMap);
+
+    res.status(200).json({ summary, cards });
+
+  } catch (err) {
+    console.error("Error in chat API:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
 }
