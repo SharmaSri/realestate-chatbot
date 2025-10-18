@@ -1,0 +1,38 @@
+[
+  {
+    "VariantID": 1,
+    "ConfigID": 1,
+    "Bathrooms": 2,
+    "Balcony": 1,
+    "FurnishedType": "Semi-Furnished",
+    "Lift": true,
+    "ParkingType": "Covered",
+    "CarpetArea": "1100 sq.ft",
+    "Price": "₹1.2 Cr",
+    "AboutProperty": "Spacious 2BHK with modular kitchen and park view."
+  },
+  {
+    "VariantID": 2,
+    "ConfigID": 2,
+    "Bathrooms": 1,
+    "Balcony": 1,
+    "FurnishedType": "Unfurnished",
+    "Lift": true,
+    "ParkingType": "Open",
+    "CarpetArea": "650 sq.ft",
+    "Price": "₹90 Lakh",
+    "AboutProperty": "Affordable 1BHK apartment near metro with security."
+  },
+  {
+    "VariantID": 3,
+    "ConfigID": 3,
+    "Bathrooms": 3,
+    "Balcony": 2,
+    "FurnishedType": "Fully-Furnished",
+    "Lift": true,
+    "ParkingType": "Covered",
+    "CarpetArea": "1800 sq.ft",
+    "Price": "₹2.3 Cr",
+    "AboutProperty": "Luxury 3BHK with smart home features and rooftop amenities."
+  }
+]

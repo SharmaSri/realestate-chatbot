@@ -1,0 +1,29 @@
+[
+  {
+    "ProjectID": 1,
+    "ProjectName": "Sunrise Heights",
+    "City": "Pune",
+    "State": "Maharashtra",
+    "Developer": "BrightBuild Constructions",
+    "LaunchDate": "2023-01-01",
+    "Status": "Ready to Move"
+  },
+  {
+    "ProjectID": 2,
+    "ProjectName": "Green Valley",
+    "City": "Mumbai",
+    "State": "Maharashtra",
+    "Developer": "Skyline Developers",
+    "LaunchDate": "2022-05-01",
+    "Status": "Under Construction"
+  },
+  {
+    "ProjectID": 3,
+    "ProjectName": "Skyline Elite",
+    "City": "Bangalore",
+    "State": "Karnataka",
+    "Developer": "UrbanEdge Realty",
+    "LaunchDate": "2023-07-01",
+    "Status": "Pre-Launch"
+  }
+]

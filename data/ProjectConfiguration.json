@@ -1,0 +1,23 @@
+[
+  {
+    "ConfigID": 1,
+    "ProjectID": 1,
+    "PropertyCategory": "Residential",
+    "Type": "Apartment",
+    "CustomBHK": "2 BHK"
+  },
+  {
+    "ConfigID": 2,
+    "ProjectID": 2,
+    "PropertyCategory": "Residential",
+    "Type": "Flat",
+    "CustomBHK": "1 BHK"
+  },
+  {
+    "ConfigID": 3,
+    "ProjectID": 3,
+    "PropertyCategory": "Residential",
+    "Type": "Penthouse",
+    "CustomBHK": "3 BHK"
+  }
+]

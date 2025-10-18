@@ -1,0 +1,23 @@
+[
+  {
+    "AddressID": 1,
+    "ProjectID": 1,
+    "FullAddress": "Sunrise Heights, Kharadi, Pune, Maharashtra",
+    "Pincode": "411014",
+    "Landmark": "Near EON IT Park"
+  },
+  {
+    "AddressID": 2,
+    "ProjectID": 2,
+    "FullAddress": "Green Valley, Andheri East, Mumbai, Maharashtra",
+    "Pincode": "400069",
+    "Landmark": "Near Marol Metro Station"
+  },
+  {
+    "AddressID": 3,
+    "ProjectID": 3,
+    "FullAddress": "Skyline Elite, Whitefield, Bangalore, Karnataka",
+    "Pincode": "560066",
+    "Landmark": "Close to Phoenix Mall"
+  }
+]
