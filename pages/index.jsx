@@ -5,14 +5,11 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState("");
-  const [results, setResults] = useState([]);
+  const [cards, setCards] = useState([]);
 
   const handleSearch = async () => {
     if (!query) return;
     setLoading(true);
-    setSummary("");
-    setResults([]);
-
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -21,57 +18,68 @@ export default function Home() {
       });
       const data = await res.json();
       setSummary(data.summary || "");
-      setResults(data.results || []);
+      setCards(data.cards || []);
     } catch (err) {
       console.error(err);
       setSummary("Something went wrong. Please try again.");
+      setCards([]);
     }
     setLoading(false);
   };
 
   return (
-    <div className="min-h-screen p-6 bg-gray-100">
-      <h1 className="text-3xl font-bold mb-4">Real Estate ChatBot</h1>
+    <div className="container mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Real Estate ChatBot</h1>
 
-      <div className="flex mb-4">
+      <div className="flex gap-2 mb-4">
         <input
           type="text"
+          className="border p-2 flex-1"
           placeholder="Ask about properties..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="flex-1 p-2 border border-gray-300 rounded-l"
         />
         <button
           onClick={handleSearch}
+          className="bg-blue-600 text-white px-4 py-2"
           disabled={loading}
-          className="p-2 bg-blue-600 text-white rounded-r hover:bg-blue-700"
         >
           {loading ? "Searching..." : "Search"}
         </button>
       </div>
 
-      {summary && <p className="mb-4 font-medium">{summary}</p>}
+      {summary && <p className="mb-4 font-semibold">{summary}</p>}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {results.map((project) => (
-          <div key={project.slug} className="bg-white p-4 rounded shadow">
-            <h2 className="text-xl font-semibold mb-1">{project.title}</h2>
-            <p className="text-gray-600 mb-1">
-              {project.city} {project.locality && `• ${project.locality}`}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {cards.map((card) => (
+          <div
+            key={card.slug}
+            className="border rounded-lg p-4 shadow hover:shadow-lg transition"
+          >
+            <h2 className="text-xl font-bold mb-1">{card.title}</h2>
+            <p className="mb-1">
+              <strong>City:</strong> {card.city}
             </p>
-            <p className="text-gray-600 mb-1">BHK: {project.bhk}</p>
-            <p className="text-gray-600 mb-1">Price: {project.price}</p>
-            <p className="text-gray-600 mb-1">Possession: {project.possession}</p>
-            {project.amenities && project.amenities.length > 0 && (
-              <p className="text-gray-600 mb-1">
-                Amenities: {project.amenities.join(", ")}
-              </p>
-            )}
+            <p className="mb-1">
+              <strong>Locality:</strong> {card.locality}
+            </p>
+            <p className="mb-1">
+              <strong>BHK:</strong> {card.BHK}
+            </p>
+            <p className="mb-1">
+              <strong>Price:</strong> {card.price}
+            </p>
+            <p className="mb-1">
+              <strong>Possession:</strong> {card.possession}
+            </p>
+            <p className="mb-1">
+              <strong>Amenities:</strong> {card.amenities.join(", ")}
+            </p>
             <a
-              href={`/project/${project.slug}`}
-              className="inline-block mt-2 text-blue-600 hover:underline"
+              href={`/project/${card.slug}`}
+              className="text-blue-600 hover:underline mt-2 block"
             >
-              View Project
+              View Details
             </a>
           </div>
         ))}

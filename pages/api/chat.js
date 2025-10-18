@@ -3,77 +3,98 @@ import fs from "fs";
 import path from "path";
 import Papa from "papaparse";
 
+// Load CSVs once
+const loadCSV = (filename) => {
+  const filePath = path.join(process.cwd(), "public", filename);
+  if (!fs.existsSync(filePath)) {
+    console.warn(`⚠️ Could not read ${filename}: ENOENT`);
+    return [];
+  }
+  const file = fs.readFileSync(filePath, "utf8");
+  const { data } = Papa.parse(file, { header: true, skipEmptyLines: true });
+  return data;
+};
+
+// Load CSVs
+const projects = loadCSV("Project.csv");
+const addresses = loadCSV("ProjectAddress.csv");
+const configurations = loadCSV("ProjectConfiguration.csv");
+const variants = loadCSV("ProjectConfigurationVariant.csv");
+
+// Create lookup maps
+const cityMap = {};
+const localityMap = {};
+addresses.forEach(a => {
+  if (a.cityId) cityMap[a.cityId] = a.fullAddress?.split(",")[0] || "Unknown City";
+  if (a.localityId) localityMap[a.localityId] = a.fullAddress?.split(",")[1]?.trim() || "Unknown Locality";
+});
+
 export default async function handler(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ message: "Method not allowed" });
+
   try {
-    // --- Helper function to load CSV safely ---
-    const loadCSV = (filename) => {
-      const filePath = path.join(process.cwd(), "public", filename);
-      if (!fs.existsSync(filePath)) {
-        console.warn(`⚠️ Could not read ${filename}: File does not exist at ${filePath}`);
-        return [];
-      }
-      const csvData = fs.readFileSync(filePath, "utf8");
-      return Papa.parse(csvData, { header: true, skipEmptyLines: true }).data;
-    };
+    const { query } = req.body;
+    if (!query) return res.status(400).json({ message: "Query is required" });
 
-    // --- Load all CSVs ---
-    const projects = loadCSV("Project.csv");
-    const addresses = loadCSV("ProjectAddress.csv");
-    const configurations = loadCSV("ProjectConfiguration.csv");
-    const variants = loadCSV("ProjectConfigurationVariant.csv");
+    // --- Parse query manually or via your LLM ---
+    // For demo, very basic parsing
+    const lower = query.toLowerCase();
+    const city = lower.match(/pune|mumbai|bangalore|delhi/)?.[0];
+    const bhk = parseInt(lower.match(/(\d)bhk/)?.[1]);
+    const budgetMatch = lower.match(/under\s*₹?(\d+(\.\d+)?)\s*cr/);
+    const budget = budgetMatch ? parseFloat(budgetMatch[1]) * 1e7 : null;
+    const status = lower.includes("ready") ? "READY" : lower.includes("under construction") ? "UNDER_CONSTRUCTION" : null;
 
-    console.log(`✅ Loaded ${projects.length} projects`);
-    console.log(`✅ Loaded ${addresses.length} addresses`);
-    console.log(`✅ Loaded ${configurations.length} configurations`);
-    console.log(`✅ Loaded ${variants.length} variants`);
+    // --- Filter projects ---
+    const results = projects.filter(p => {
+      // City filter
+      if (city && cityMap[p.cityId]?.toLowerCase() !== city) return false;
 
-    // --- Parse user query (dummy for now) ---
-    const { query } = req.body || {};
-    if (!query) {
-      return res.status(400).json({ message: "Query is required." });
-    }
+      // BHK filter
+      const config = configurations.find(c => c.projectId === p.id);
+      if (bhk && config && parseInt(config.customBHK) !== bhk) return false;
 
-    // Example filter: 2BHK ready homes in Pune under 1.5 Cr
-    const filteredProjects = projects.filter(
-      (p) =>
-        p.cityId === "cmf6nu3ru000gvcxspxarll3v" && // Pune ID
-        p.status === "READY" &&
-        configurations.some(
-          (c) =>
-            c.projectId === p.id &&
-            c.customBHK === "2BHK" &&
-            variants.some((v) => v.configurationId === c.id && Number(v.price) <= 1.5)
-        )
-    );
+      // Price filter
+      const variant = variants.find(v => v.configurationId === (config?.id || ""));
+      if (budget && variant && parseFloat(variant.price) > budget) return false;
 
-    if (filteredProjects.length === 0) {
-      return res.json({ summary: "No properties found matching your criteria.", results: [] });
-    }
+      // Status filter
+      if (status && p.status !== status) return false;
 
-    // Map projects to frontend cards
-    const results = filteredProjects.map((p) => {
-      const addr = addresses.find((a) => a.projectId === p.id);
-      const config = configurations.find((c) => c.projectId === p.id);
-      const variant = variants.find((v) => v.configurationId === config?.id);
+      return true;
+    });
 
+    // --- Create cards ---
+    const cards = results.map(p => {
+      const config = configurations.find(c => c.projectId === p.id);
+      const variant = variants.find(v => v.configurationId === (config?.id || ""));
+      const addr = addresses.find(a => a.projectId === p.id);
       return {
         title: p.projectName,
-        city: p.cityId, // replace with proper city name mapping
-        locality: addr?.fullAddress || "",
-        bhk: config?.customBHK || "",
-        price: variant?.price ? `₹${variant.price} Cr` : "",
-        possession: p.status,
-        amenities: ["Lift", "Parking"], // Example, replace with real if in CSV
-        slug: p.slug,
+        projectName: p.projectName,
+        city: cityMap[p.cityId] || "Unknown City",
+        locality: localityMap[p.localityId] || "Unknown Locality",
+        BHK: config?.customBHK + "BHK" || "N/A",
+        price: variant?.price ? `₹${(variant.price / 1e7).toFixed(2)} Cr` : "N/A",
+        possession: p.status === "READY" ? "Ready-to-move" : "Under Construction",
+        amenities: ["Lift", "Parking"], // you can extend from variant/furnishingType
+        slug: p.slug
       };
     });
 
-    // Example summary
-    const summary = `Found ${results.length} matching properties.`;
+    // --- Summary ---
+    let summary = "No properties found matching your criteria.";
+    if (cards.length > 0) {
+      summary = `${cards.length} properties found`;
+      if (city) summary += ` in ${city.charAt(0).toUpperCase() + city.slice(1)}`;
+      if (bhk) summary += ` with ${bhk}BHK`;
+      if (budget) summary += ` under ₹${(budget / 1e7).toFixed(2)} Cr`;
+    }
 
-    return res.status(200).json({ summary, results });
+    res.status(200).json({ summary, cards });
+
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: "Internal server error." });
+    res.status(500).json({ message: "Internal server error." });
   }
 }
