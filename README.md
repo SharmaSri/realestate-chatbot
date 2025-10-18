@@ -95,5 +95,3 @@ npm run start
 
 ---
 
-## Licens
-Do you want me to do that?
