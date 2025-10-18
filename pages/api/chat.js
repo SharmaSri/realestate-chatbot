@@ -1,93 +1,80 @@
 import fs from "fs";
 import path from "path";
 import Papa from "papaparse";
-import { parseQueryWithLLM } from "../../utils/queryParser.js";
 
-const csvFiles = [
-  "Project.csv",
-  "ProjectAddress.csv",
-  "ProjectConfiguration.csv",
-  "ProjectConfigurationVariant.csv"
-];
-
-const csvData = {};
-
-for (const file of csvFiles) {
-  const filePath = path.join(process.cwd(), "public", file);
-  try {
-    const fileContent = fs.readFileSync(filePath, "utf8");
-    const results = Papa.parse(fileContent, { header: true }).data;
-    csvData[file.replace(".csv", "")] = results;
-    console.log(`✅ Loaded ${file}, sample:`, results[0]);
-  } catch (err) {
-    console.error(`❌ Error reading ${file}:`, err.message);
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ message: "Method not allowed" });
   }
-}
 
+  try {
+    const csvFiles = [
+      "Project.csv",
+      "ProjectAddress.csv",
+      "ProjectConfiguration.csv",
+      "ProjectConfigurationVariant.csv",
+    ];
 
-    // Extract filters
-    const q = query.toLowerCase();
-    const bhkMatch = q.match(/(\d+)\s*bhk/i);
-    const priceMatch = q.match(/under\s*₹?\s*([\d.]+)\s*([lc]r)?/i);
-    const cityMatch = q.match(/in\s+([a-zA-Z]+)/i);
+    const csvData = {};
 
-    const bhk = bhkMatch ? parseInt(bhkMatch[1]) : null;
-    let maxPrice = null;
-    if (priceMatch) {
-      const value = parseFloat(priceMatch[1]);
-      const unit = priceMatch[2];
-      if (unit === "cr") maxPrice = value * 10000000;
-      else if (unit === "l") maxPrice = value * 100000;
-      else maxPrice = value;
+    for (const file of csvFiles) {
+      const filePath = path.join(process.cwd(), "public", file);
+
+      try {
+        const fileContent = fs.readFileSync(filePath, "utf8");
+        const results = Papa.parse(fileContent, { header: true }).data;
+        csvData[file.replace(".csv", "")] = results;
+        console.log(`✅ Loaded ${file}`);
+      } catch (err) {
+        console.error(`⚠️ Could not read ${file}:`, err.message);
+      }
     }
-    const city = cityMatch ? cityMatch[1].toLowerCase() : null;
 
-    // Merge data
-    const merged = variants.map((v) => {
-      const config = configs.find((c) => c.id === v.configurationId);
-      const project = projects.find((p) => p.id === config?.projectId);
-      const address = addresses.find((a) => a.projectId === project?.id);
+    const { query } = req.body;
+    if (!query) {
+      return res.status(400).json({ message: "Query missing in request" });
+    }
+
+    // Basic keyword filter example:
+    const keyword = query.toLowerCase();
+    const projects = csvData.Project || [];
+    const addresses = csvData.ProjectAddress || [];
+    const configurations = csvData.ProjectConfiguration || [];
+    const variants = csvData.ProjectConfigurationVariant || [];
+
+    // Simple search logic
+    const matchedProjects = projects.filter(
+      (p) =>
+        p.projectName?.toLowerCase().includes(keyword) ||
+        p.projectType?.toLowerCase().includes(keyword)
+    );
+
+    if (matchedProjects.length === 0) {
+      return res.status(200).json({
+        results: [],
+        message: "No properties found matching your criteria.",
+      });
+    }
+
+    const finalResults = matchedProjects.map((proj) => {
+      const address = addresses.find((a) => a.projectId === proj.id);
+      const config = configurations.find((c) => c.projectId === proj.id);
+      const variant = variants.find((v) => v.configurationId === config?.id);
 
       return {
-        projectName: project?.projectName,
-        cityId: project?.cityId,
-        customBHK: config?.customBHK,
-        price: v.price,
-        possessionDate: project?.possessionDate,
-        status: project?.status,
-        projectType: project?.projectType,
-        propertyCategory: config?.propertyCategory,
-        fullAddress: address?.fullAddress,
+        title: proj.projectName,
+        type: proj.projectType,
+        price: variant?.price || "N/A",
+        bhk: config?.customBHK || "N/A",
+        city: proj.cityId,
+        possession: proj.possessionDate || "N/A",
+        address: address?.fullAddress || "N/A",
       };
     });
 
-    // Filter logic
-    const filtered = merged.filter((item) => {
-      const priceOk =
-        !maxPrice || (item.price && parseFloat(item.price) <= maxPrice);
-      const bhkOk =
-        !bhk ||
-        (item.customBHK &&
-          parseInt(item.customBHK) === bhk);
-      const cityOk =
-        !city ||
-        (item.fullAddress && item.fullAddress.toLowerCase().includes(city));
-
-      return priceOk && bhkOk && cityOk;
-    });
-
-    if (!filtered.length)
-      return res.status(200).json({
-        summary: "No properties found matching your criteria.",
-        results: [],
-      });
-
-    res.status(200).json({
-      summary: `Found ${filtered.length} matching properties.`,
-      results: filtered.slice(0, 10),
-    });
+    return res.status(200).json({ results: finalResults });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Internal server error." });
+    console.error("❌ Server error:", err);
+    return res.status(500).json({ message: "Internal server error." });
   }
 }
